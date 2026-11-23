@@ -72,6 +72,17 @@ jobs:
           VERSION: ${{ steps.input.outputs.version }}
         run: |
           set -euo pipefail
+          # A re-run of an app's release workflow dispatches the same version
+          # again, and brew refuses to bump a version to itself. Treat an
+          # already-current version as success rather than a red run.
+          for f in "Casks/$APP.rb" "Formula/$APP.rb"; do
+            [ -f "$f" ] || continue
+            current=$(sed -n -E 's/^[[:space:]]*version "([^"]+)".*/\1/p' "$f" | head -1)
+            if [ -n "$current" ] && [ "$current" = "$VERSION" ]; then
+              echo "$APP is already at $VERSION; nothing to bump"
+              exit 0
+            fi
+          done
           if [ -f "Casks/$APP.rb" ]; then
             brew bump-cask-pr --write-only --no-audit --no-style \
               --version="$VERSION" "ideascoldigital/tap/$APP"

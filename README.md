@@ -42,8 +42,13 @@ brew upgrade --cask nexus
 
 From the Actions tab, run the **bump** workflow with the app name and the new
 version. It rewrites the version, recomputes the sha256 from the published
-artifact, re-audits and commits to `main`. A version whose GitHub release is not
-published yet fails the download instead of committing a broken checksum.
+artifact, re-audits and commits to `main`.
+
+Publish the GitHub release first. `release-native.yml` in nexus attaches its
+bundles to a *draft* release, and a draft is invisible to both the anonymous
+download and `brew livecheck`, so bumping before publishing fails instead of
+committing a broken checksum. A bump to anything other than the newest
+published release fails the same way, on purpose.
 
 To have an app repository do it on its own, add a job to its release workflow:
 

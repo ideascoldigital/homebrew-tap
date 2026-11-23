@@ -23,19 +23,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
-        with:
-          path: checkout
 
+      # Because the repository is named homebrew-*, this links the checkout in
+      # as ideascoldigital/tap. A pull request is therefore audited as it would
+      # be after merging, not as whatever main currently holds.
       - uses: Homebrew/actions/setup-homebrew@main
-
-      # Homebrew only loads a cask or formula from a real tap directory, so the
-      # checkout stands in for the tap. This way a pull request is audited as it
-      # would be after merging, not as whatever main currently holds.
-      - name: Mount the checkout as the tap
-        run: |
-          tap="$(brew --repository)/Library/Taps/ideascoldigital/homebrew-tap"
-          mkdir -p "$(dirname "$tap")"
-          mv checkout "$tap"
 
       # Homebrew refuses to load anything from an untrusted third-party tap.
       - name: Trust the tap

@@ -55,17 +55,10 @@ jobs:
           echo "version=${VERSION#v}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v5
-        with:
-          path: checkout
 
+      # Links the checkout in as ideascoldigital/tap, so brew edits the files
+      # this job will commit.
       - uses: Homebrew/actions/setup-homebrew@main
-
-      - name: Mount the checkout as the tap
-        run: |
-          tap="$(brew --repository)/Library/Taps/ideascoldigital/homebrew-tap"
-          mkdir -p "$(dirname "$tap")"
-          mv checkout "$tap"
-          echo "TAP_DIR=$tap" >> "$GITHUB_ENV"
 
       - name: Trust the tap
         run: brew trust --tap ideascoldigital/tap
@@ -79,7 +72,6 @@ jobs:
           VERSION: ${{ steps.input.outputs.version }}
         run: |
           set -euo pipefail
-          cd "$TAP_DIR"
           if [ -f "Casks/$APP.rb" ]; then
             brew bump-cask-pr --write-only --no-audit --no-style \
               --version="$VERSION" "ideascoldigital/tap/$APP"
@@ -93,7 +85,6 @@ jobs:
 
       - name: Check the result
         run: |
-          cd "$TAP_DIR"
           brew style ideascoldigital/tap
           brew audit --tap=ideascoldigital/tap --online
 
@@ -103,7 +94,6 @@ jobs:
           VERSION: ${{ steps.input.outputs.version }}
         run: |
           set -euo pipefail
-          cd "$TAP_DIR"
           if git diff --quiet; then
             echo "$APP is already at $VERSION, nothing to commit"
             exit 0

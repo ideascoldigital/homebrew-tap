@@ -50,23 +50,38 @@ download and `brew livecheck`, so bumping before publishing fails instead of
 committing a broken checksum. A bump to anything other than the newest
 published release fails the same way, on purpose.
 
-To have an app repository do it on its own, add a job to its release workflow:
+To have an app repository do it on its own, give it a workflow that fires when a
+release is **published** — not when the build finishes, since a draft release is
+invisible to both the anonymous download and livecheck:
 
 ```yaml
-- name: Bump the Homebrew tap
-  env:
-    TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-  run: |
-    curl -fsSL -X POST \
-      -H "Accept: application/vnd.github+json" \
-      -H "Authorization: Bearer $TAP_TOKEN" \
-      https://api.github.com/repos/ideascoldigital/homebrew-tap/dispatches \
-      -d "$(jq -nc --arg v "${GITHUB_REF_NAME#v}" \
-            '{event_type:"bump",client_payload:{app:"nexus",version:$v}}')"
+on:
+  release:
+    types: [published]
+
+jobs:
+  bump:
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          curl -fsSL -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $TAP_TOKEN" \
+            https://api.github.com/repos/ideascoldigital/homebrew-tap/dispatches \
+            -d "$(jq -nc --arg v "${TAG#v}" \
+                  '{event_type:"bump",client_payload:{app:"<token>",version:$v}}')"
 ```
 
-`HOMEBREW_TAP_TOKEN` is a token with `contents: write` on this repository — the
-default `GITHUB_TOKEN` of the app repository cannot reach across repositories.
+`nexus` has this as `.github/workflows/bump-homebrew.yml`. `HOMEBREW_TAP_TOKEN`
+is a fine-grained token scoped to this repository alone with `Contents: Read and
+write` — the app repository's own `GITHUB_TOKEN` cannot reach across
+repositories. It is a user token, so it dies with the user's access and expires
+on its own; the bump workflow can always be run by hand from the Actions tab in
+the meantime.
 
 ## Adding an app
 

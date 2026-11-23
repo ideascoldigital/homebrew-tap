@@ -58,7 +58,7 @@ jobs:
         with:
           path: checkout
 
-      - uses: Homebrew/actions/setup-homebrew@master
+      - uses: Homebrew/actions/setup-homebrew@main
 
       - name: Mount the checkout as the tap
         run: |

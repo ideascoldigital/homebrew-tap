@@ -26,7 +26,7 @@ jobs:
         with:
           path: checkout
 
-      - uses: Homebrew/actions/setup-homebrew@master
+      - uses: Homebrew/actions/setup-homebrew@main
 
       # Homebrew only loads a cask or formula from a real tap directory, so the
       # checkout stands in for the tap. This way a pull request is audited as it

@@ -1,0 +1,114 @@
+name: bump
+
+# Points a cask or formula at a new version and recomputes its sha256 from the
+# published artifact, then commits to main. Two ways in:
+#
+#   * by hand, from the Actions tab (app + version)
+#   * from the app's own repository, once its release is published:
+#
+#       curl -fsSL -X POST \
+#         -H "Accept: application/vnd.github+json" \
+#         -H "Authorization: Bearer $TAP_TOKEN" \
+#         https://api.github.com/repos/ideascoldigital/homebrew-tap/dispatches \
+#         -d '{"event_type":"bump","client_payload":{"app":"nexus","version":"0.3.6"}}'
+#
+#     where TAP_TOKEN is a token with contents:write on this repository.
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "Cask or formula name (e.g. nexus)"
+        required: true
+      version:
+        description: "New version (e.g. 0.3.6, or v0.3.6)"
+        required: true
+  repository_dispatch:
+    types: [bump]
+
+concurrency:
+  group: bump-${{ github.event.inputs.app || github.event.client_payload.app }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Read the inputs
+        id: input
+        env:
+          APP: ${{ github.event.inputs.app || github.event.client_payload.app }}
+          VERSION: ${{ github.event.inputs.version || github.event.client_payload.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "${APP:-}" ] || [ -z "${VERSION:-}" ]; then
+            echo "::error::both app and version are required"
+            exit 1
+          fi
+          # A repository_dispatch usually carries the git tag, a cask carries the
+          # bare version; accept either spelling.
+          echo "app=$APP" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v5
+        with:
+          path: checkout
+
+      - uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Mount the checkout as the tap
+        run: |
+          tap="$(brew --repository)/Library/Taps/ideascoldigital/homebrew-tap"
+          mkdir -p "$(dirname "$tap")"
+          mv checkout "$tap"
+          echo "TAP_DIR=$tap" >> "$GITHUB_ENV"
+
+      - name: Trust the tap
+        run: brew trust --tap ideascoldigital/tap
+
+      # brew downloads the new artifact to work out its sha256, so a version
+      # whose release is not published yet fails here instead of shipping a
+      # broken checksum.
+      - name: Rewrite version and sha256
+        env:
+          APP: ${{ steps.input.outputs.app }}
+          VERSION: ${{ steps.input.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd "$TAP_DIR"
+          if [ -f "Casks/$APP.rb" ]; then
+            brew bump-cask-pr --write-only --no-audit --no-style \
+              --version="$VERSION" "ideascoldigital/tap/$APP"
+          elif [ -f "Formula/$APP.rb" ]; then
+            brew bump-formula-pr --write-only --no-audit \
+              --version="$VERSION" "ideascoldigital/tap/$APP"
+          else
+            echo "::error::neither Casks/$APP.rb nor Formula/$APP.rb exists in the tap"
+            exit 1
+          fi
+
+      - name: Check the result
+        run: |
+          cd "$TAP_DIR"
+          brew style ideascoldigital/tap
+          brew audit --tap=ideascoldigital/tap --online
+
+      - name: Commit to main
+        env:
+          APP: ${{ steps.input.outputs.app }}
+          VERSION: ${{ steps.input.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd "$TAP_DIR"
+          if git diff --quiet; then
+            echo "$APP is already at $VERSION, nothing to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "$APP $VERSION"
+          git push origin HEAD:main

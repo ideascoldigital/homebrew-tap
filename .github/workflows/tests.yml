@@ -1,0 +1,48 @@
+name: tests
+
+# Style + audit for every cask and formula in the tap. The audit runs --online,
+# so it downloads each artifact and catches the usual breakage: a sha256 that
+# does not match the release, or a release asset that was renamed.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: checkout
+
+      - uses: Homebrew/actions/setup-homebrew@master
+
+      # Homebrew only loads a cask or formula from a real tap directory, so the
+      # checkout stands in for the tap. This way a pull request is audited as it
+      # would be after merging, not as whatever main currently holds.
+      - name: Mount the checkout as the tap
+        run: |
+          tap="$(brew --repository)/Library/Taps/ideascoldigital/homebrew-tap"
+          mkdir -p "$(dirname "$tap")"
+          mv checkout "$tap"
+
+      # Homebrew refuses to load anything from an untrusted third-party tap.
+      - name: Trust the tap
+        run: brew trust --tap ideascoldigital/tap
+
+      - name: brew style
+        run: brew style ideascoldigital/tap
+
+      - name: brew audit
+        run: brew audit --tap=ideascoldigital/tap --online

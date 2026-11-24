@@ -103,6 +103,7 @@ jobs:
         env:
           APP: ${{ steps.input.outputs.app }}
           VERSION: ${{ steps.input.outputs.version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           if git diff --quiet; then
@@ -112,4 +113,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -am "$APP $VERSION"
+          # Re-establish the push credential instead of trusting the one
+          # actions/checkout leaves behind: setup-homebrew runs between the two
+          # and by the time we get here the checkout's header no longer
+          # authenticates, so the push asks for a username on a machine with no
+          # terminal ("could not read Username for https://github.com"). That
+          # failed the first bump ever to reach this step, after the rewrite and
+          # the audit had both passed — v0.4.0, run 45316133336.
+          #
+          # Same mechanism checkout uses, so the token stays out of the remote
+          # URL, where an error message could echo it back.
+          git config --local http.https://github.com/.extraheader \
+            "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 | tr -d '\n')"
           git push origin HEAD:main
